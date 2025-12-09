@@ -9,9 +9,10 @@ export const config = {
 
   // JWT
   jwt: {
-    secret: process.env.JWT_SECRET || 'endz57Zp3VK22KBvdib0Rk7iCsG983ys',
+    // Usar apenas variáveis de ambiente - sem fallbacks hardcoded para segurança
+    secret: process.env.JWT_SECRET || '',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'mL7NYGkI2OLku8Dm38HqrF1jwAr2xAgCAUaWphW8MEpxufCYqqEBGvMGKbi5c8mC',
+    refreshSecret: process.env.JWT_REFRESH_SECRET || '',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
   },
 
@@ -65,14 +66,16 @@ export const config = {
     port: parseInt(process.env.SMTP_PORT?.trim() || '465', 10),
     user: process.env.SMTP_USER?.trim() || 'laboratorio@softhard.it.ao',
     // Suportar tanto SMTP_PASSWORD quanto SMTP_PASS (compatibilidade)
-    password: (process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '%gN_?Xr[K9hw').trim(),
+    // Usar apenas variáveis de ambiente - sem fallbacks hardcoded para segurança
+    password: (process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '').trim(),
     from: process.env.SMTP_FROM?.trim() || 'noreply@zolangola.com',
   },
 
   // Admin
   admin: {
     email: process.env.ADMIN_EMAIL || 'admin@zolangola.com',
-    password: process.env.ADMIN_PASSWORD || '4n5rNKr6`6qI',
+    // Usar apenas variáveis de ambiente - sem fallbacks hardcoded para segurança
+    password: process.env.ADMIN_PASSWORD || '',
   },
 };
 

@@ -15,11 +15,12 @@ const isDevelopment = (process.env.NODE_ENV || 'development') === 'development';
 
 const config: DatabaseConfig = {
   // Suportar tanto MYSQL_* quanto DB_* para compatibilidade
-  host: process.env.MYSQL_HOST || process.env.DB_HOST || (isDevelopment ? 'localhost' : '69.10.55.154'),
+  // Usar apenas variáveis de ambiente - sem fallbacks hardcoded para segurança
+  host: process.env.MYSQL_HOST || process.env.DB_HOST || (isDevelopment ? 'localhost' : ''),
   port: parseInt(process.env.MYSQL_PORT || process.env.DB_PORT || '3306', 10),
-  user: process.env.MYSQL_USER || process.env.DB_USER || (isDevelopment ? 'root' : 'softhardit_zolangola'),
-  password: process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || (isDevelopment ? '' : 'c?n,!g*+[dXze~WQ'),
-  database: process.env.MYSQL_DATABASE || process.env.DB_NAME || (isDevelopment ? 'zolangola_db' : 'softhardit_zolangola_db'),
+  user: process.env.MYSQL_USER || process.env.DB_USER || (isDevelopment ? 'root' : ''),
+  password: process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || '',
+  database: process.env.MYSQL_DATABASE || process.env.DB_NAME || (isDevelopment ? 'zolangola_db' : ''),
   connectionLimit: parseInt(process.env.MYSQL_CONNECTION_LIMIT || process.env.DB_CONNECTION_LIMIT || '10', 10),
 };
 
