@@ -64,7 +64,11 @@ if (config.nodeEnv === 'development') {
 }
 
 // Servir arquivos estáticos (uploads)
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+// Nota: Em ambiente serverless (Vercel), arquivos não persistem entre deployments
+// Considere usar serviços externos (S3, Cloudinary, etc.) para produção
+if (!process.env.VERCEL) {
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+}
 
 // Health Check
 app.get('/health', (_req: Request, res: Response) => {

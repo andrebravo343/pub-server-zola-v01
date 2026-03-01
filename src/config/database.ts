@@ -25,12 +25,15 @@ const config: DatabaseConfig = {
 };
 
 // Pool de conexões MySQL
+// Configuração otimizada para serverless (Vercel)
 export const pool = mysql.createPool({
   ...config,
   waitForConnections: true,
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  // Configurações específicas para serverless
+  connectionLimit: process.env.VERCEL ? 2 : config.connectionLimit, // Limitar conexões em serverless
 });
 
 // Testar conexão

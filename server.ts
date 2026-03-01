@@ -11,14 +11,24 @@ import { testConnection } from './src/config/database';
 
 const PORT = config.port;
 
+// Verificar se está rodando na Vercel (serverless)
+const isVercel = !!process.env.VERCEL;
+
 async function startServer() {
   try {
     // Testar conexão com banco de dados
     const dbConnected = await testConnection();
     
     if (!dbConnected) {
-      console.error('Não foi possível conectar ao banco de dados. Encerrando...');
-      process.exit(1);
+      console.error('⚠️  Não foi possível conectar ao banco de dados.');
+      if (!isVercel) {
+        // Em ambiente local, encerrar se não conectar
+        console.error('Encerrando servidor...');
+        process.exit(1);
+      } else {
+        // Em serverless, apenas logar o erro (a conexão será tentada novamente na próxima requisição)
+        console.warn('⚠️  Continuando sem conexão ao banco. A conexão será tentada novamente na próxima requisição.');
+      }
     }
 
     // Verificar e inicializar serviço de email
@@ -27,13 +37,24 @@ async function startServer() {
       const emailConfigured = await emailService.verifyConnection();
       if (!emailConfigured) {
         console.warn('\n⚠️  Serviço de email não configurado. Emails não serão enviados.');
-        console.warn('   Configure as variáveis SMTP no arquivo .env\n');
+        if (!isVercel) {
+          console.warn('   Configure as variáveis SMTP no arquivo .env\n');
+        } else {
+          console.warn('   Configure as variáveis SMTP nas configurações da Vercel\n');
+        }
       }
     } catch (emailError) {
       console.warn('⚠️  Erro ao verificar serviço de email:', emailError);
     }
 
-    // Iniciar servidor
+    // Em ambiente serverless (Vercel), não iniciar servidor HTTP
+    // O handler serverless em api/index.ts cuida disso
+    if (isVercel) {
+      console.log('✅ Servidor configurado para ambiente Vercel (serverless)');
+      return;
+    }
+
+    // Iniciar servidor apenas em ambiente local/tradicional
     app.listen(PORT, () => {
       console.log(`
 Servidor ZOLANGOLA iniciado com sucesso!
@@ -47,7 +68,10 @@ Health Check: http://localhost:${PORT}/health
     });
   } catch (error) {
     console.error('Erro ao iniciar servidor:', error);
-    process.exit(1);
+    if (!isVercel) {
+      process.exit(1);
+    }
+    // Em serverless, não fazer exit - deixar a função retornar erro
   }
 }
 

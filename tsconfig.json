@@ -36,6 +36,6 @@
       "@database/*": ["./database/*"]
     }
   },
-  "include": ["server.ts", "src/**/*"],
+  "include": ["server.ts", "src/**/*", "api/**/*"],
   "exclude": ["node_modules", "dist"]
 }
