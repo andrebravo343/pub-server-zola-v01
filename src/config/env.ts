@@ -18,22 +18,41 @@ export const config = {
 
   // CORS
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',') || [
-      'http://localhost:5173', 
-      'http://localhost:5174', 
-      'http://localhost:5175', 
-      'http://localhost:5176', 
-      'http://localhost:5177', // Site público
-      'http://localhost:3000',
-      'https://zolangola.com',
-      'https://admin.zolangola.com',
+    origin: (() => {
+      const isDevelopment = (process.env.NODE_ENV || 'development') === 'development';
+      const defaultOrigins = [
+        'http://localhost:5173', 
+        'http://localhost:5174', 
+        'http://localhost:5175', 
+        'http://localhost:5176', 
+        'http://localhost:5177', // Site público
+        'http://localhost:3000',
+        'https://zolangola.com',
+        'https://www.zolangola.com',
+        'https://admin.zolangola.com',
         'https://empresa.zolangola.com',
         'https://candidato.zolangola.com',
         'https://admin-zolangola.vercel.app',
         'https://empresa-zolangola.vercel.app',
         'https://candidato-zolangola.vercel.app',
         'https://site-zolangola.vercel.app',
-    ],
+        'https://69.10.55.154',
+        'https://softhard.it.ao',
+        'https://www.softhard.it.ao',
+      ];
+      
+      // Se CORS_ORIGIN estiver definido, usar ele + localhost em desenvolvimento
+      if (process.env.CORS_ORIGIN) {
+        const envOrigins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
+        // Em desenvolvimento, sempre incluir localhost
+        if (isDevelopment) {
+          return [...new Set([...defaultOrigins, ...envOrigins])];
+        }
+        return envOrigins;
+      }
+      
+      return defaultOrigins;
+    })(),
   },
 
   // Rate Limiting

@@ -80,6 +80,14 @@ MAX_FILE_SIZE=5242880
 UPLOAD_PATH=./uploads
 ```
 
+### VERCEL BLOB STORAGE (Opcional - apenas para produção)
+```env
+# Token de acesso ao Vercel Blob Storage
+# Obtenha em: https://vercel.com/dashboard/stores
+BLOB_READ_WRITE_TOKEN=vercel_blob_xxx
+```
+**Nota:** Se `BLOB_READ_WRITE_TOKEN` ou `VERCEL` estiver configurado, os uploads usarão automaticamente o Vercel Blob Storage. Caso contrário, usará filesystem local.
+
 ### RATE LIMITING
 ```env
 RATE_LIMIT_WINDOW_MS=900000

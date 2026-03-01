@@ -1,5 +1,6 @@
 /**
  * Script para migrar todos os dados do banco de dados local para produção
+ * Com suporte aprimorado para TiDB Cloud
  * 
  * Uso: npm run migrate:production
  * ou: ts-node src/scripts/migrate-to-production.ts
@@ -61,7 +62,7 @@ interface DatabaseConfig {
   user: string;
   password: string;
   database: string;
-  ssl?: any; // SslOptions do mysql2 ou undefined
+  ssl?: any;
   connectionLimit?: number;
 }
 
@@ -87,7 +88,6 @@ function getProductionConfig(): DatabaseConfig | null {
   const prodUser = process.env.MYSQL_USER_PROD;
   const prodPassword = process.env.MYSQL_PASSWORD_PROD;
 
-  // Verificar se todas as variáveis necessárias estão configuradas
   if (!prodHost || !prodDatabase || !prodUser || !prodPassword) {
     return null;
   }
@@ -100,19 +100,69 @@ function getProductionConfig(): DatabaseConfig | null {
     database: prodDatabase,
   };
 
-  // Configurar SSL se necessário (mas não forçar se não suportado)
   const sslConfig = process.env.MYSQL_SSL_PROD;
   if (sslConfig === 'true' || sslConfig === '1') {
     config.ssl = { rejectUnauthorized: false };
   }
-  // Se não configurado, não adicionar propriedade ssl (deixa undefined)
 
-  // Connection limit
   if (process.env.MYSQL_CONNECTION_LIMIT) {
     config.connectionLimit = parseInt(process.env.MYSQL_CONNECTION_LIMIT);
   }
 
   return config;
+}
+
+/**
+ * Ajustar CREATE TABLE para compatibilidade com TiDB
+ */
+function adjustCreateTableForTiDB(createTableSQL: string): string {
+  let adjustedSQL = createTableSQL;
+
+  // 1. Remover ENGINE=InnoDB se existir (TiDB usa InnoDB por padrão)
+  adjustedSQL = adjustedSQL.replace(/ENGINE=InnoDB/gi, '');
+
+  // 2. Ajustar índices FULLTEXT
+  // Padrão MySQL: FULLTEXT KEY `idx_name` (`col1`,`col2`,`col3`)
+  // TiDB requer: Um índice FULLTEXT por coluna
+  
+  // Encontrar todos os índices FULLTEXT
+  const fulltextRegex = /FULLTEXT\s+KEY\s+`([^`]+)`\s*\(([^)]+)\)/gi;
+  const fulltextMatches = [...adjustedSQL.matchAll(fulltextRegex)];
+
+  if (fulltextMatches.length > 0) {
+    console.log(`   ⚠️  Ajustando ${fulltextMatches.length} índice(s) FULLTEXT para TiDB...`);
+
+    for (const match of fulltextMatches) {
+      const fullMatch = match[0];
+      const indexName = match[1];
+      const columns = match[2];
+
+      // Separar colunas
+      const columnList = columns.split(',').map(col => col.trim().replace(/`/g, ''));
+
+      if (columnList.length > 1) {
+        // Múltiplas colunas - criar um índice para cada
+        const newIndexes = columnList.map((col, idx) => {
+          return `FULLTEXT KEY \`${indexName}_${idx}\` (\`${col}\`)`;
+        }).join(',\n  ');
+
+        adjustedSQL = adjustedSQL.replace(fullMatch, newIndexes);
+        console.log(`   ✓ Índice FULLTEXT '${indexName}' dividido em ${columnList.length} índices`);
+      } else {
+        // Uma única coluna - manter como está
+        console.log(`   ✓ Índice FULLTEXT '${indexName}' já está correto`);
+      }
+    }
+  }
+
+  // 3. Remover ROW_FORMAT se existir (TiDB pode não suportar todas as opções)
+  adjustedSQL = adjustedSQL.replace(/ROW_FORMAT=\w+/gi, '');
+
+  // 4. Limpar espaços extras
+  adjustedSQL = adjustedSQL.replace(/,\s*,/g, ',');
+  adjustedSQL = adjustedSQL.replace(/\s+/g, ' ').trim();
+
+  return adjustedSQL;
 }
 
 /**
@@ -175,14 +225,12 @@ async function insertTableData(
     return;
   }
 
-  // Obter colunas da tabela
   const [columns] = await connection.execute<mysql.RowDataPacket[]>(
     `SHOW COLUMNS FROM \`${tableName}\``
   );
   const columnNames = columns.map(col => col.Field);
   const columnsStr = columnNames.map(col => `\`${col}\``).join(', ');
 
-  // Executar em lotes menores para evitar problemas
   const batchSize = 100;
   const placeholderRow = `(${columnNames.map(() => '?').join(', ')})`;
   
@@ -191,22 +239,17 @@ async function insertTableData(
     const batchValues: any[] = [];
     const batchPlaceholders: string[] = [];
 
-    // Preparar cada linha do batch
     for (const row of batch) {
       const rowValues: any[] = [];
       for (const col of columnNames) {
-        // Tratar valores NULL, undefined, e tipos especiais
         let value = row[col];
         if (value === undefined) {
           value = null;
         } else if (value instanceof Date) {
-          // Converter Date para string MySQL
           value = value.toISOString().slice(0, 19).replace('T', ' ');
         } else if (Buffer.isBuffer(value)) {
-          // Manter buffers como estão
           value = value;
         } else if (typeof value === 'object' && value !== null && !(value instanceof Date) && !Buffer.isBuffer(value)) {
-          // Converter objetos para JSON string
           try {
             value = JSON.stringify(value);
           } catch {
@@ -219,13 +262,11 @@ async function insertTableData(
       batchPlaceholders.push(placeholderRow);
     }
 
-    // Construir e executar query
     const batchQuery = `INSERT INTO \`${tableName}\` (${columnsStr}) VALUES ${batchPlaceholders.join(', ')}`;
     
     try {
       await connection.execute(batchQuery, batchValues);
     } catch (error: any) {
-      // Se falhar em batch, tentar inserir um por um para identificar o problema
       if (batch.length > 1 && error.message.includes('mysqld_stmt_execute')) {
         console.log(`   ⚠️  Erro no batch, tentando inserir um por um...`);
         for (let j = 0; j < batch.length; j++) {
@@ -280,12 +321,23 @@ async function migrateTable(
     const createTableSQL = await getCreateTable(localConn, tableName);
     console.log(`   ✓ Estrutura obtida`);
 
-    // 2. Criar tabela no banco de produção (DROP IF EXISTS primeiro)
-    await prodConn.execute(`DROP TABLE IF EXISTS \`${tableName}\``);
-    await prodConn.execute(createTableSQL);
-    console.log(`   ✓ Tabela criada no banco de produção`);
+    // 2. Ajustar SQL para TiDB
+    const adjustedSQL = adjustCreateTableForTiDB(createTableSQL);
 
-    // 3. Migrar dados se não for para pular
+    // 3. Criar tabela no banco de produção (DROP IF EXISTS primeiro)
+    await prodConn.execute(`DROP TABLE IF EXISTS \`${tableName}\``);
+    
+    try {
+      await prodConn.execute(adjustedSQL);
+      console.log(`   ✓ Tabela criada no banco de produção`);
+    } catch (createError: any) {
+      console.error(`   ❌ Erro ao criar tabela:`, createError.message);
+      console.log(`   📝 SQL gerado (primeiras 500 chars):`);
+      console.log(`   ${adjustedSQL.substring(0, 500)}...`);
+      throw createError;
+    }
+
+    // 4. Migrar dados se não for para pular
     if (!options.skipData) {
       const data = await getTableData(localConn, tableName);
       console.log(`   ✓ ${data.length} registros encontrados`);
@@ -316,7 +368,6 @@ async function migrateAllTables(
   console.log(`\n📊 Total de tabelas para migrar: ${tables.length}`);
   console.log(`📋 Tabelas: ${tables.join(', ')}\n`);
 
-  // Desabilitar foreign key checks
   await disableForeignKeyChecks(prodConn);
 
   try {
@@ -324,7 +375,6 @@ async function migrateAllTables(
       await migrateTable(localConn, prodConn, table, { skipData: options.skipData });
     }
   } finally {
-    // Reabilitar foreign key checks
     await enableForeignKeyChecks(prodConn);
   }
 }
@@ -333,9 +383,8 @@ async function migrateAllTables(
  * Função principal
  */
 async function main() {
-  console.log('🚀 Iniciando migração do banco de dados local para produção...\n');
+  console.log('🚀 Iniciando migração do banco de dados local para produção (TiDB Cloud)...\n');
 
-  // Verificar configuração de produção
   const prodConfig = getProductionConfig();
   if (!prodConfig) {
     console.error('❌ Erro: Variáveis de ambiente de produção não configuradas!');
@@ -351,7 +400,6 @@ async function main() {
 
   const localConfig = getLocalConfig();
 
-  // Obter informações de IP
   console.log('🌐 Informações de Rede:');
   const localIPs = getLocalIPs();
   if (localIPs.length > 0) {
@@ -362,7 +410,7 @@ async function main() {
   const publicIP = await getPublicIP();
   if (publicIP) {
     console.log(`   IP Público: ${publicIP}`);
-    console.log(`   ⚠️  Configure este IP no cPanel > Remote MySQL\n`);
+    console.log(`   ⚠️  Configure este IP no TiDB Cloud > Network Access\n`);
   } else {
     console.log('   ⚠️  Não foi possível obter IP público automaticamente\n');
   }
@@ -372,20 +420,20 @@ async function main() {
   console.log(`   Database: ${localConfig.database}`);
   console.log(`   User: ${localConfig.user}\n`);
 
-  console.log('📦 Configuração Produção:');
+  console.log('📦 Configuração Produção (TiDB Cloud):');
   console.log(`   Host: ${prodConfig.host}`);
   console.log(`   Database: ${prodConfig.database}`);
   console.log(`   User: ${prodConfig.user}`);
   console.log(`   SSL: ${prodConfig.ssl ? 'Habilitado' : 'Desabilitado'}\n`);
 
-  // Confirmar antes de continuar
   if (process.argv.includes('--yes') || process.argv.includes('-y')) {
     console.log('⚠️  Modo automático ativado (--yes)\n');
   } else {
     console.log('⚠️  ATENÇÃO: Esta operação irá:');
     console.log('   1. Apagar TODAS as tabelas do banco de produção');
     console.log('   2. Recriar todas as tabelas com a estrutura do banco local');
-    console.log('   3. Copiar TODOS os dados do banco local para produção\n');
+    console.log('   3. Ajustar índices FULLTEXT para compatibilidade com TiDB');
+    console.log('   4. Copiar TODOS os dados do banco local para produção\n');
     
     const readline = require('readline').createInterface({
       input: process.stdin,
@@ -407,21 +455,19 @@ async function main() {
   let prodConn: mysql.Connection | null = null;
 
   try {
-    // Conectar aos bancos
     console.log('\n🔌 Conectando ao banco local...');
     localConn = await mysql.createConnection(localConfig);
     console.log('✅ Conectado ao banco local');
 
-    console.log('\n🔌 Conectando ao banco de produção...');
+    console.log('\n🔌 Conectando ao banco de produção (TiDB Cloud)...');
     try {
       prodConn = await mysql.createConnection(prodConfig);
       console.log('✅ Conectado ao banco de produção');
     } catch (sslError: any) {
-      // Se falhar com SSL, tentar sem SSL
       if (prodConfig.ssl && (sslError.message.includes('secure connection') || sslError.message.includes('SSL'))) {
-        console.log('   ⚠️  Servidor não suporta SSL, tentando sem SSL...');
+        console.log('   ⚠️  Erro com SSL, tentando sem SSL...');
         const prodConfigNoSSL: DatabaseConfig = { ...prodConfig };
-        delete prodConfigNoSSL.ssl; // Remover SSL ao invés de definir como false
+        delete prodConfigNoSSL.ssl;
         prodConn = await mysql.createConnection(prodConfigNoSSL);
         console.log('✅ Conectado ao banco de produção (sem SSL)');
       } else {
@@ -429,7 +475,6 @@ async function main() {
       }
     }
 
-    // Verificar se o banco de produção existe
     const [databases] = await prodConn.execute<mysql.RowDataPacket[]>(
       `SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?`,
       [prodConfig.database]
@@ -444,7 +489,6 @@ async function main() {
       await prodConn.execute(`USE \`${prodConfig.database}\``);
     }
 
-    // Migrar todas as tabelas
     const startTime = Date.now();
     await migrateAllTables(localConn, prodConn);
     const endTime = Date.now();
@@ -455,7 +499,6 @@ async function main() {
     const tables = await getTables(localConn);
     console.log(`   - ${tables.length} tabelas migradas`);
     
-    // Contar total de registros
     let totalRecords = 0;
     for (const table of tables) {
       const [count] = await prodConn!.execute<mysql.RowDataPacket[]>(
@@ -470,34 +513,23 @@ async function main() {
     
     const errorMsg = error.message.toLowerCase();
     
-    if (errorMsg.includes('secure connection') || errorMsg.includes('ssl')) {
-      console.error('\n💡 Erro de SSL detectado!');
-      console.error('   Configure MYSQL_SSL_PROD=false no .env e tente novamente.\n');
-    } else if (errorMsg.includes('access denied') || errorMsg.includes('er_access_denied')) {
-      console.error('\n🔐 Erro de Acesso Negado - Configuração de IP Necessária\n');
-      console.error('📌 Explicação:');
-      console.error(`   - Servidor MySQL (destino): ${prodConfig.host} (IP do cPanel)`);
+    if (errorMsg.includes('access denied') || errorMsg.includes('er_access_denied')) {
+      console.error('\n🔐 Erro de Acesso - Configure o Network Access no TiDB Cloud\n');
+      console.error('✅ SOLUÇÃO:');
+      console.error('   1. Acesse: https://tidbcloud.com/console/clusters');
+      console.error('   2. Selecione seu cluster');
+      console.error('   3. Vá em "Network Access"');
       if (publicIP) {
-        console.error(`   - Sua máquina (origem): ${publicIP} (IP que precisa ser autorizado)`);
-      }
-      console.error(`   - O MySQL bloqueou porque seu IP não está autorizado\n`);
-      
-      console.error('✅ SOLUÇÃO: Configure acesso remoto no cPanel:\n');
-      console.error('   1. Acesse: cPanel > Remote MySQL');
-      if (publicIP) {
-        console.error(`   2. Adicione este IP de origem: ${publicIP}`);
-        console.error(`   3. Ou adicione os IPs locais: ${localIPs.join(', ')}`);
-        console.error(`   4. Ou use '%' para permitir qualquer IP (apenas para teste)\n`);
+        console.error(`   4. Adicione este IP: ${publicIP}`);
       } else {
-        console.error(`   2. Adicione o IP público da sua máquina`);
-        console.error(`   3. Ou use '%' para permitir qualquer IP (apenas para teste)\n`);
+        console.error(`   4. Adicione o IP público da sua máquina`);
       }
+      console.error('   5. Ou use 0.0.0.0/0 para permitir qualquer IP (apenas para teste)\n');
     }
     
     console.error(error.stack);
     process.exit(1);
   } finally {
-    // Fechar conexões
     if (localConn) {
       await localConn.end();
       console.log('\n🔌 Conexão local fechada');
@@ -509,7 +541,6 @@ async function main() {
   }
 }
 
-// Executar se chamado diretamente
 if (require.main === module) {
   main().catch(error => {
     console.error('Erro fatal:', error);
@@ -518,4 +549,3 @@ if (require.main === module) {
 }
 
 export { main as migrateToProduction };
-

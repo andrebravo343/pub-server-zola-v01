@@ -1,0 +1,51 @@
+
+============================================================
+RELATÓRIO DE MIGRAÇÃO MYSQL → FIRESTORE
+============================================================
+
+Data/Hora Início: 2026-01-07T23:37:32.033Z
+Data/Hora Fim: 2026-01-07T23:38:17.769Z
+Duração: 0.76 minutos
+
+RESUMO GERAL:
+- Tabelas processadas: 28
+- Tabelas com sucesso: 28
+- Tabelas com erros: 0
+- Total de registros: 68
+- Registros migrados: 68
+- Registros com erro: 0
+- Taxa de sucesso: 100.00%
+
+DETALHES POR TABELA:
+  users: 7/7 (5.36s) ✅
+  talent_users: 1/1 (2.50s) ✅
+  talent_profiles: 1/1 (1.91s) ✅
+  talent_experience: 0/0 (0.55s) ✅
+  talent_education: 0/0 (0.52s) ✅
+  talent_skills: 0/0 (0.62s) ✅
+  talent_languages: 0/0 (0.61s) ✅
+  talent_documents: 0/0 (0.60s) ✅
+  company_users: 2/2 (1.76s) ✅
+  company_profiles: 2/2 (1.94s) ✅
+  admin_users: 3/3 (1.46s) ✅
+  jobs: 2/2 (1.61s) ✅
+  applications: 1/1 (1.33s) ✅
+  application_status_history: 0/0 (0.72s) ✅
+  course_enrollments: 0/0 (0.79s) ✅
+  courses: 2/2 (2.85s) ✅
+  certificates: 1/1 (1.49s) ✅
+  subscription_plans: 3/3 (1.26s) ✅
+  subscriptions: 1/1 (1.15s) ✅
+  payments: 0/0 (0.57s) ✅
+  interviews: 0/0 (0.57s) ✅
+  notifications: 2/2 (1.13s) ✅
+  audit_logs: 12/12 (1.45s) ✅
+  news: 1/1 (1.11s) ✅
+  refresh_tokens: 24/24 (1.23s) ✅
+  password_reset_tokens: 0/0 (0.61s) ✅
+  oauth_tokens: 3/3 (1.53s) ✅
+  two_factor_codes: 0/0 (0.72s) ✅
+
+
+
+============================================================

@@ -43,3 +43,4 @@ coverage/
 # Mirror temp files
 .public-mirror/
 
+.vercel

@@ -694,7 +694,7 @@ export class ProfileController {
             if (adminUser.profile_picture_url) {
               const oldFilename = adminUser.profile_picture_url.split('/').pop();
               if (oldFilename) {
-                deleteProfilePicture(oldFilename);
+                await deleteProfilePicture(oldFilename);
               }
             }
 
@@ -731,7 +731,7 @@ export class ProfileController {
             if (talentUser.profile_picture_url) {
               const oldFilename = talentUser.profile_picture_url.split('/').pop();
               if (oldFilename) {
-                deleteProfilePicture(oldFilename);
+                await deleteProfilePicture(oldFilename);
               }
             }
 
@@ -758,7 +758,7 @@ export class ProfileController {
               if (companyProfile.logo_url) {
                 const oldFilename = companyProfile.logo_url.split('/').pop();
                 if (oldFilename) {
-                  deleteProfilePicture(oldFilename);
+                  await deleteProfilePicture(oldFilename);
                 }
               }
 
