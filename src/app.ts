@@ -16,7 +16,7 @@ import adminRoutes from './routes/admin.routes';
 import companyRoutes from './routes/company.routes';
 import talentRoutes from './routes/talent.routes';
 import publicRoutes from './routes/public.routes';
-import uploadsRoutes from './routes/uploads.routes';
+import uploadsRoutes from './routes/uploads.routes'; 
 
 const app: Application = express();
 

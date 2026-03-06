@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Importar o app Express
-import app from '../src/app';
+import app from '../src/app'; 
 
 // Exportar como handler serverless da Vercel
 export default app;
